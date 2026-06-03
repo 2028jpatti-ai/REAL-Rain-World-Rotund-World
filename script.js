@@ -16,7 +16,9 @@ const game = {
     particles: [],
     shelterY: 0,
     borderThickness: 8,
-    borderColor: '#f39c12'
+    borderColor: '#f39c12',
+    selectedCreature: null,
+    keys: {}
 };
 
 // Creature class
@@ -34,6 +36,7 @@ class Creature {
         this.wobbleAmount = type === 'rotund' ? 0.02 : 0;
         this.wobblePhase = Math.random() * Math.PI * 2;
         this.color = this.getColor();
+        this.isSelected = false;
     }
 
     getColor() {
@@ -42,10 +45,34 @@ class Creature {
         return colors[Math.floor(Math.random() * colors.length)];
     }
 
-    update() {
+    update(isControlled = false) {
         // Apply gravity towards shelter area
         const gravity = 0.15;
         this.vy += gravity;
+
+        // If controlled by player, apply reduced input force (bloated creatures are slow!)
+        if (isControlled) {
+            const moveForce = this.type === 'rotund' ? 0.3 : 0.5; // Rotund creatures move slower
+            
+            if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) {
+                this.vy -= moveForce;
+            }
+            if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) {
+                this.vy += moveForce * 0.5; // Less downward force
+            }
+            if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) {
+                this.vx -= moveForce;
+            }
+            if (game.keys['ArrowRight'] || game.keys['d'] || game.keys['D']) {
+                this.vx += moveForce;
+            }
+
+            // Add some resistance/drag for bloated creatures
+            if (this.type === 'rotund') {
+                this.vx *= 0.93;
+                this.vy *= 0.93;
+            }
+        }
 
         // Update position
         this.x += this.vx;
@@ -85,6 +112,15 @@ class Creature {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.rotation);
+
+        // Draw selection highlight
+        if (this.isSelected) {
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, this.bodySize / 2 + 5, 0, Math.PI * 2);
+            ctx.stroke();
+        }
 
         // Draw body (much larger if rotund)
         if (this.type === 'rotund') {
@@ -165,6 +201,7 @@ class Particle {
 function initializeCreatures() {
     game.creatures = [];
     game.particles = [];
+    game.selectedCreature = null;
 
     // Add some rotund creatures at various positions
     for (let i = 0; i < 3; i++) {
@@ -178,6 +215,12 @@ function initializeCreatures() {
         const x = Math.random() * (canvas.width - 200) + 100;
         const y = Math.random() * (canvas.height / 2 - 150) + 50;
         game.creatures.push(new Creature(x, y, 15, 'normal'));
+    }
+
+    // Select the first rotund creature by default
+    if (game.creatures.length > 0) {
+        game.selectedCreature = game.creatures[0];
+        game.selectedCreature.isSelected = true;
     }
 }
 
@@ -219,10 +262,19 @@ function drawRain() {
     }
 }
 
+// Draw UI text
+function drawUI() {
+    ctx.fillStyle = '#95a5a6';
+    ctx.font = '14px Arial';
+    ctx.fillText('Press ARROW KEYS or WASD to move the selected creature (white outline)', 10, 25);
+    ctx.fillText('Click creatures to select them', 10, 45);
+}
+
 // Update game state
 function update() {
-    game.creatures.forEach(creature => {
-        creature.update();
+    game.creatures.forEach((creature, index) => {
+        const isControlled = creature === game.selectedCreature;
+        creature.update(isControlled);
     });
 
     game.particles = game.particles.filter(p => p.life > 0);
@@ -255,7 +307,41 @@ function draw() {
 
     // Draw shelter area
     drawShelter();
+
+    // Draw UI
+    drawUI();
 }
+
+// Keyboard input handling
+document.addEventListener('keydown', (e) => {
+    game.keys[e.key] = true;
+});
+
+document.addEventListener('keyup', (e) => {
+    game.keys[e.key] = false;
+});
+
+// Mouse click to select creatures
+canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Find creature under mouse
+    for (let creature of game.creatures) {
+        const dist = Math.hypot(creature.x - mouseX, creature.y - mouseY);
+        if (dist < creature.bodySize / 2) {
+            // Deselect previous creature
+            if (game.selectedCreature) {
+                game.selectedCreature.isSelected = false;
+            }
+            // Select new creature
+            game.selectedCreature = creature;
+            creature.isSelected = true;
+            break;
+        }
+    }
+});
 
 // Clear button functionality
 clearBtn.addEventListener('click', () => {
