@@ -5,7 +5,7 @@ const clearBtn = document.getElementById('clearBtn');
 // Set canvas to full window size
 function resizeCanvas() {
     canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight - 120; // Account for header/footer
+    canvas.height = window.innerHeight - 120;
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
@@ -21,44 +21,41 @@ const game = {
     keys: {}
 };
 
+// Pixel drawing utility
+function drawPixel(x, y, size, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, size, size);
+}
+
 // Creature class
 class Creature {
-    constructor(x, y, size, type = 'normal') {
+    constructor(x, y, size, type = 'slugcat') {
         this.x = x;
         this.y = y;
         this.size = size;
-        this.type = type; // 'rotund' for bloated, 'normal' for regular
+        this.type = type; // 'slugcat', 'lizard', 'rotund_slugcat', 'rotund_lizard'
         this.vx = (Math.random() - 0.5) * 2;
         this.vy = (Math.random() - 0.5) * 2;
-        this.rotation = Math.random() * Math.PI * 2;
-        this.rotationSpeed = (Math.random() - 0.5) * 0.02;
-        this.bodySize = type === 'rotund' ? size * 2.5 : size;
-        this.wobbleAmount = type === 'rotund' ? 0.02 : 0;
+        this.rotation = 0;
+        this.bodyScale = this.type.includes('rotund') ? 2.2 : 1;
         this.wobblePhase = Math.random() * Math.PI * 2;
-        this.color = this.getColor();
+        this.wobbleAmount = this.type.includes('rotund') ? 0.04 : 0;
         this.isSelected = false;
-    }
-
-    getColor() {
-        if (this.type === 'rotund') return '#1abc9c'; // Bright green for rotund
-        const colors = ['#f39c12', '#e74c3c']; // Orange and red for normal
-        return colors[Math.floor(Math.random() * colors.length)];
+        this.animationFrame = 0;
     }
 
     update(isControlled = false) {
-        // Apply gravity towards shelter area
         const gravity = 0.15;
         this.vy += gravity;
 
-        // If controlled by player, apply reduced input force (bloated creatures are slow!)
         if (isControlled) {
-            const moveForce = this.type === 'rotund' ? 0.3 : 0.5; // Rotund creatures move slower
+            const moveForce = this.type.includes('rotund') ? 0.25 : 0.4;
             
             if (game.keys['ArrowUp'] || game.keys['w'] || game.keys['W']) {
                 this.vy -= moveForce;
             }
             if (game.keys['ArrowDown'] || game.keys['s'] || game.keys['S']) {
-                this.vy += moveForce * 0.5; // Less downward force
+                this.vy += moveForce * 0.4;
             }
             if (game.keys['ArrowLeft'] || game.keys['a'] || game.keys['A']) {
                 this.vx -= moveForce;
@@ -67,157 +64,239 @@ class Creature {
                 this.vx += moveForce;
             }
 
-            // Add some resistance/drag for bloated creatures
-            if (this.type === 'rotund') {
-                this.vx *= 0.93;
-                this.vy *= 0.93;
+            if (this.type.includes('rotund')) {
+                this.vx *= 0.92;
+                this.vy *= 0.92;
             }
         }
 
-        // Update position
         this.x += this.vx;
         this.y += this.vy;
-
-        // Update rotation
-        this.rotation += this.rotationSpeed;
         this.wobblePhase += this.wobbleAmount;
+        this.animationFrame = (this.animationFrame + 1) % 8;
 
-        // Bounce off walls
-        const padding = this.bodySize / 2 + game.borderThickness;
-        if (this.x - this.bodySize / 2 < game.borderThickness) {
-            this.x = game.borderThickness + this.bodySize / 2;
+        const bodySize = this.size * this.bodyScale;
+        const padding = bodySize / 2 + game.borderThickness;
+
+        if (this.x - bodySize / 2 < game.borderThickness) {
+            this.x = game.borderThickness + bodySize / 2;
             this.vx = Math.abs(this.vx) * 0.7;
         }
-        if (this.x + this.bodySize / 2 > canvas.width - game.borderThickness) {
-            this.x = canvas.width - game.borderThickness - this.bodySize / 2;
+        if (this.x + bodySize / 2 > canvas.width - game.borderThickness) {
+            this.x = canvas.width - game.borderThickness - bodySize / 2;
             this.vx = -Math.abs(this.vx) * 0.7;
         }
 
-        // Bounce off top
-        if (this.y - this.bodySize / 2 < game.borderThickness) {
-            this.y = game.borderThickness + this.bodySize / 2;
+        if (this.y - bodySize / 2 < game.borderThickness) {
+            this.y = game.borderThickness + bodySize / 2;
             this.vy = Math.abs(this.vy) * 0.7;
         }
 
-        // Stop at shelter area
         game.shelterY = canvas.height - 60;
-        if (this.y + this.bodySize / 2 >= game.shelterY) {
-            this.y = game.shelterY - this.bodySize / 2;
+        if (this.y + bodySize / 2 >= game.shelterY) {
+            this.y = game.shelterY - bodySize / 2;
             this.vy = 0;
             this.vx *= 0.95;
         }
     }
 
-    draw() {
+    drawSlugcat() {
+        const scale = this.bodyScale;
+        const wobble = Math.sin(this.wobblePhase) * 0.3 * scale;
+        const baseSize = this.size;
+
         ctx.save();
         ctx.translate(this.x, this.y);
-        ctx.rotate(this.rotation);
 
-        // Draw selection highlight
+        // Body - wide and round for rotund effect
+        const bodyWidth = baseSize * 1.4 * scale + wobble;
+        const bodyHeight = baseSize * 1.2 * scale;
+
+        // Main body (orange-yellow)
+        ctx.fillStyle = '#E8A54D';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Belly (lighter)
+        ctx.fillStyle = '#F5D076';
+        ctx.beginPath();
+        ctx.ellipse(0, bodyHeight / 6, bodyWidth / 2.5, bodyHeight / 2.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Head
+        const headSize = baseSize * 0.7 * scale;
+        ctx.fillStyle = '#E8A54D';
+        ctx.beginPath();
+        ctx.ellipse(0, -bodyHeight / 2 - headSize / 3, headSize, headSize, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ears
+        ctx.fillStyle = '#D48A3D';
+        ctx.beginPath();
+        ctx.ellipse(-headSize / 3, -bodyHeight / 2 - headSize, headSize / 3, headSize / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(headSize / 3, -bodyHeight / 2 - headSize, headSize / 3, headSize / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eyes
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-headSize / 4, -bodyHeight / 2 - headSize / 3, headSize / 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(headSize / 4, -bodyHeight / 2 - headSize / 3, headSize / 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye shine
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(-headSize / 4 + 2, -bodyHeight / 2 - headSize / 3 - 2, headSize / 16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(headSize / 4 + 2, -bodyHeight / 2 - headSize / 3 - 2, headSize / 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Snout
+        ctx.fillStyle = '#D48A3D';
+        ctx.beginPath();
+        ctx.ellipse(0, -bodyHeight / 2, headSize / 3.5, headSize / 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Front paws
+        ctx.fillStyle = '#D48A3D';
+        ctx.beginPath();
+        ctx.ellipse(-bodyWidth / 3, bodyHeight / 3, baseSize * 0.3 * scale, baseSize * 0.25 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(bodyWidth / 3, bodyHeight / 3, baseSize * 0.3 * scale, baseSize * 0.25 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Selection highlight
         if (this.isSelected) {
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.arc(0, 0, this.bodySize / 2 + 5, 0, Math.PI * 2);
+            ctx.ellipse(0, 0, bodyWidth / 2 + 10, bodyHeight / 2 + 10, 0, 0, Math.PI * 2);
             ctx.stroke();
-        }
-
-        // Draw body (much larger if rotund)
-        if (this.type === 'rotund') {
-            // Bloated body with wobble
-            const wobble = Math.sin(this.wobblePhase) * 0.15;
-            ctx.fillStyle = this.color;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, this.bodySize / 2 * (1 + wobble), this.bodySize / 2, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Add shine effect
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.beginPath();
-            ctx.ellipse(-this.bodySize / 6, -this.bodySize / 6, this.bodySize / 5, this.bodySize / 8, 0, 0, Math.PI * 2);
-            ctx.fill();
-        } else {
-            // Normal creature body
-            ctx.fillStyle = this.color;
-            ctx.beginPath();
-            ctx.arc(0, 0, this.bodySize / 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        // Draw eyes
-        ctx.fillStyle = '#000';
-        ctx.beginPath();
-        ctx.arc(-this.bodySize / 6, -this.bodySize / 8, this.bodySize / 12, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(this.bodySize / 6, -this.bodySize / 8, this.bodySize / 12, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Draw pupils (looking down for rotund creatures)
-        ctx.fillStyle = '#fff';
-        if (this.type === 'rotund') {
-            ctx.beginPath();
-            ctx.arc(-this.bodySize / 6, -this.bodySize / 12, this.bodySize / 20, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(this.bodySize / 6, -this.bodySize / 12, this.bodySize / 20, 0, Math.PI * 2);
-            ctx.fill();
         }
 
         ctx.restore();
     }
-}
 
-// Particle class
-class Particle {
-    constructor(x, y, vx, vy, color, life) {
-        this.x = x;
-        this.y = y;
-        this.vx = vx;
-        this.vy = vy;
-        this.color = color;
-        this.life = life;
-        this.maxLife = life;
-        this.size = 3;
-    }
+    drawLizard() {
+        const scale = this.bodyScale;
+        const wobble = Math.sin(this.wobblePhase) * 0.25 * scale;
+        const baseSize = this.size;
 
-    update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.vy += 0.1; // gravity
-        this.life--;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+
+        // Body - long and round for rotund effect
+        const bodyWidth = baseSize * 1.6 * scale + wobble;
+        const bodyHeight = baseSize * 0.9 * scale;
+
+        // Main body (green/teal)
+        ctx.fillStyle = '#4DB8A8';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, bodyWidth / 2, bodyHeight / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Body stripes
+        ctx.fillStyle = '#3A9B90';
+        ctx.beginPath();
+        ctx.ellipse(0, -bodyHeight / 4, bodyWidth / 2, bodyHeight / 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(0, bodyHeight / 4, bodyWidth / 2, bodyHeight / 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Head (pointed)
+        const headSize = baseSize * 0.6 * scale;
+        ctx.fillStyle = '#4DB8A8';
+        ctx.beginPath();
+        ctx.ellipse(-bodyWidth / 2.5, 0, headSize * 0.7, headSize * 0.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Snout
+        ctx.fillStyle = '#3A9B90';
+        ctx.beginPath();
+        ctx.ellipse(-bodyWidth / 2.8, 0, headSize * 0.4, headSize * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-bodyWidth / 2.2, -headSize / 4, headSize / 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Eye shine
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(-bodyWidth / 2.2 + 2, -headSize / 4 - 2, headSize / 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Tail
+        ctx.strokeStyle = '#4DB8A8';
+        ctx.lineWidth = baseSize * 0.25 * scale;
+        ctx.beginPath();
+        ctx.moveTo(bodyWidth / 2, 0);
+        ctx.quadraticCurveTo(bodyWidth / 2 + 20, bodyHeight / 3, bodyWidth / 2 + 30, bodyHeight / 2);
+        ctx.stroke();
+
+        // Front legs
+        ctx.fillStyle = '#3A9B90';
+        ctx.beginPath();
+        ctx.ellipse(-bodyWidth / 4, bodyHeight / 2.5, baseSize * 0.25 * scale, baseSize * 0.2 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Selection highlight
+        if (this.isSelected) {
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, bodyWidth / 2 + 10, bodyHeight / 2 + 10, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        ctx.restore();
     }
 
     draw() {
-        const opacity = this.life / this.maxLife;
-        ctx.fillStyle = this.color.replace(')', `, ${opacity})`).replace('rgb', 'rgba');
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
+        if (this.type.includes('slugcat')) {
+            this.drawSlugcat();
+        } else if (this.type.includes('lizard')) {
+            this.drawLizard();
+        }
     }
 }
 
 // Initialize creatures
 function initializeCreatures() {
     game.creatures = [];
-    game.particles = [];
     game.selectedCreature = null;
 
-    // Add some rotund creatures at various positions
-    for (let i = 0; i < 3; i++) {
-        const x = Math.random() * (canvas.width - 200) + 100;
-        const y = Math.random() * (canvas.height / 2 - 150) + 50;
-        game.creatures.push(new Creature(x, y, 25, 'rotund'));
-    }
-
-    // Add some normal creatures
+    // Add rotund slugcats
     for (let i = 0; i < 2; i++) {
         const x = Math.random() * (canvas.width - 200) + 100;
         const y = Math.random() * (canvas.height / 2 - 150) + 50;
-        game.creatures.push(new Creature(x, y, 15, 'normal'));
+        game.creatures.push(new Creature(x, y, 30, 'rotund_slugcat'));
     }
 
-    // Select the first rotund creature by default
+    // Add rotund lizards
+    for (let i = 0; i < 2; i++) {
+        const x = Math.random() * (canvas.width - 200) + 100;
+        const y = Math.random() * (canvas.height / 2 - 150) + 50;
+        game.creatures.push(new Creature(x, y, 28, 'rotund_lizard'));
+    }
+
+    // Add normal slugcat for comparison
+    const x = Math.random() * (canvas.width - 200) + 100;
+    const y = Math.random() * (canvas.height / 2 - 150) + 50;
+    game.creatures.push(new Creature(x, y, 20, 'slugcat'));
+
+    // Select the first rotund creature
     if (game.creatures.length > 0) {
         game.selectedCreature = game.creatures[0];
         game.selectedCreature.isSelected = true;
@@ -241,10 +320,9 @@ function drawBorder() {
 // Draw shelter area
 function drawShelter() {
     game.shelterY = canvas.height - 60;
-    ctx.fillStyle = '#34495e';
+    ctx.fillStyle = '#2C5F4F';
     ctx.fillRect(0, game.shelterY, canvas.width, canvas.height);
     
-    // Shelter border
     ctx.strokeStyle = game.borderColor;
     ctx.lineWidth = 2;
     ctx.strokeRect(0, game.shelterY, canvas.width, canvas.height);
@@ -252,12 +330,12 @@ function drawShelter() {
 
 // Draw rain particles
 function drawRain() {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 8; i++) {
         const x = Math.random() * canvas.width;
         const y = Math.random() * (canvas.height - game.shelterY) + 50;
         ctx.fillStyle = '#f39c12';
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
         ctx.fill();
     }
 }
@@ -265,54 +343,36 @@ function drawRain() {
 // Draw UI text
 function drawUI() {
     ctx.fillStyle = '#95a5a6';
-    ctx.font = '14px Arial';
-    ctx.fillText('Press ARROW KEYS or WASD to move the selected creature (white outline)', 10, 25);
-    ctx.fillText('Click creatures to select them', 10, 45);
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText('ARROW KEYS/WASD to move | Click to select', 10, 25);
+    ctx.fillText('Try controlling the bloated creatures!', 10, 45);
 }
 
 // Update game state
 function update() {
-    game.creatures.forEach((creature, index) => {
+    game.creatures.forEach((creature) => {
         const isControlled = creature === game.selectedCreature;
         creature.update(isControlled);
-    });
-
-    game.particles = game.particles.filter(p => p.life > 0);
-    game.particles.forEach(particle => {
-        particle.update();
     });
 }
 
 // Draw game
 function draw() {
-    // Clear canvas
-    ctx.fillStyle = '#2c3e50';
+    ctx.fillStyle = '#1a2332';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw border
     drawBorder();
-
-    // Draw rain particles
     drawRain();
 
-    // Draw creatures
     game.creatures.forEach(creature => {
         creature.draw();
     });
 
-    // Draw particles
-    game.particles.forEach(particle => {
-        particle.draw();
-    });
-
-    // Draw shelter area
     drawShelter();
-
-    // Draw UI
     drawUI();
 }
 
-// Keyboard input handling
+// Keyboard input
 document.addEventListener('keydown', (e) => {
     game.keys[e.key] = true;
 });
@@ -321,21 +381,19 @@ document.addEventListener('keyup', (e) => {
     game.keys[e.key] = false;
 });
 
-// Mouse click to select creatures
+// Mouse click to select
 canvas.addEventListener('click', (e) => {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Find creature under mouse
     for (let creature of game.creatures) {
         const dist = Math.hypot(creature.x - mouseX, creature.y - mouseY);
-        if (dist < creature.bodySize / 2) {
-            // Deselect previous creature
+        const bodySize = creature.size * creature.bodyScale;
+        if (dist < bodySize / 2 + 20) {
             if (game.selectedCreature) {
                 game.selectedCreature.isSelected = false;
             }
-            // Select new creature
             game.selectedCreature = creature;
             creature.isSelected = true;
             break;
@@ -343,7 +401,7 @@ canvas.addEventListener('click', (e) => {
     }
 });
 
-// Clear button functionality
+// Clear button
 clearBtn.addEventListener('click', () => {
     initializeCreatures();
 });
